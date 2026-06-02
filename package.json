@@ -1,0 +1,18 @@
+{
+  "name": "open-in-tab-group",
+  "version": "1.0.1",
+  "description": "Open links directly into existing or new tab groups via right-click context menu",
+  "author": "yhwang",
+  "license": "MIT",
+  "scripts": {
+    "lint": "eslint extension/**/*.js",
+    "lint:fix": "eslint extension/**/*.js --fix",
+    "format": "prettier --write \"extension/**/*.{js,json}\"",
+    "format:check": "prettier --check \"extension/**/*.{js,json}\""
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.2.5"
+  }
+}

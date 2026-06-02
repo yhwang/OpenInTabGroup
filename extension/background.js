@@ -62,9 +62,7 @@ chrome.tabGroups.onUpdated.addListener((group) => {
   const previousState = groupStates.get(group.id);
   const currentState = { title: group.title, color: group.color };
 
-  if (!previousState ||
-      previousState.title !== currentState.title ||
-      previousState.color !== currentState.color) {
+  if (!previousState || previousState.title !== currentState.title || previousState.color !== currentState.color) {
     // Title or color changed - rebuild menu
     console.debug('Tab group title/color changed, scheduling menu rebuild...');
     groupStates.set(group.id, currentState);
@@ -257,7 +255,7 @@ async function handleContextMenuClick(info, tab) {
     await rebuildContextMenus();
 
     // Give it a moment to settle
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     // Try to get menu data again
     menuData = menuItemMap.get(menuItemId);
@@ -335,7 +333,7 @@ async function openLinkInExistingGroup(url, groupId, sourceTab) {
     }
 
     // Add a small delay to ensure tab is fully created
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Try to add the tab to the group with retry logic
     let retryCount = 0;
@@ -367,7 +365,7 @@ async function openLinkInExistingGroup(url, groupId, sourceTab) {
 
         if (retryCount < maxRetries) {
           // Wait before retry with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+          await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
         } else {
           console.error('All grouping attempts failed:', groupError);
           console.warn('Tab opened but not grouped');
@@ -396,7 +394,7 @@ async function openLinkInNewGroup(url, sourceTab) {
     }
 
     // Add a small delay to ensure tab is fully created
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Create a new group with this tab with retry logic
     let retryCount = 0;
@@ -424,7 +422,7 @@ async function openLinkInNewGroup(url, sourceTab) {
 
         if (retryCount < maxRetries) {
           // Wait before retry with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+          await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
         } else {
           console.error('All group creation attempts failed:', groupError);
           console.warn('Tab opened but not grouped');
@@ -455,5 +453,3 @@ async function safeCreateTab(url, windowId) {
     return null;
   }
 }
-
-// Made with Bob

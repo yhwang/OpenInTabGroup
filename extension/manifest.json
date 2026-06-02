@@ -5,11 +5,7 @@
   "description": "Open links directly into existing or new tab groups via right-click context menu",
   "author": "yhwang",
   "homepage_url": "https://github.com/yhwang/OpenInTabGroup",
-  "permissions": [
-    "contextMenus",
-    "tabs",
-    "tabGroups"
-  ],
+  "permissions": ["contextMenus", "tabs", "tabGroups"],
   "background": {
     "service_worker": "background.js"
   },

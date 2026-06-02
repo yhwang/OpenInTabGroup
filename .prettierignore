@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Test files
+test/
+
+# IDE and system files
+.DS_Store
+.vscode/
+
+# Package files
+package-lock.json
+yarn.lock
+
+# Extension assets
+extension/icons/
