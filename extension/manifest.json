@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Open in Tab Group",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Open links directly into existing or new tab groups via right-click context menu",
   "author": "yhwang",
   "homepage_url": "https://github.com/yhwang/OpenInTabGroup",

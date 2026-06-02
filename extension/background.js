@@ -42,6 +42,13 @@ chrome.runtime.onStartup.addListener(() => {
   scheduleRebuild();
 });
 
+// Ensure menus are built when service worker wakes up
+// This handles the case where user right-clicks on a newly opened page
+if (menuItemMap.size === 0) {
+  console.debug('Service worker initialized, building menus...');
+  scheduleRebuild();
+}
+
 /**
  * Listen for tab group changes to rebuild menus
  */
@@ -239,14 +246,48 @@ async function handleContextMenuClick(info, tab) {
   }
 
   const menuItemId = info.menuItemId;
-  const menuData = menuItemMap.get(menuItemId);
+  let menuData = menuItemMap.get(menuItemId);
 
+  // If menu data not found, rebuild and retry once
   if (!menuData) {
-    console.warn('Unknown menu item clicked:', menuItemId);
-    console.debug('Available menu items:', Array.from(menuItemMap.keys()));
-    // Menu might have been cleared, try rebuilding
+    console.warn('Menu item not found in map, rebuilding menus...');
+    console.debug('Available menu items before rebuild:', Array.from(menuItemMap.keys()));
+
+    // Wait for rebuild to complete
     await rebuildContextMenus();
-    return;
+
+    // Give it a moment to settle
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    // Try to get menu data again
+    menuData = menuItemMap.get(menuItemId);
+
+    if (!menuData) {
+      console.error('Menu item still not found after rebuild:', menuItemId);
+      console.debug('Available menu items after rebuild:', Array.from(menuItemMap.keys()));
+
+      // Last resort: try to parse the menu ID to determine action
+      if (menuItemId === NEW_GROUP_MENU_ID) {
+        console.warn('Detected "New group" action from menu ID, proceeding...');
+        menuData = { type: 'new-group' };
+      } else if (menuItemId.startsWith(GROUP_MENU_PREFIX)) {
+        const groupId = parseInt(menuItemId.replace(GROUP_MENU_PREFIX, ''));
+        if (!isNaN(groupId)) {
+          console.warn(`Detected existing group action (ID: ${groupId}) from menu ID, proceeding...`);
+          menuData = { type: 'existing-group', groupId: groupId };
+        }
+      }
+
+      if (!menuData) {
+        console.error('Unable to determine action, opening link without grouping');
+        try {
+          await chrome.tabs.create({ url: linkUrl, windowId: tab.windowId });
+        } catch (fallbackError) {
+          console.error('Failed to open link:', fallbackError);
+        }
+        return;
+      }
+    }
   }
 
   try {
@@ -257,6 +298,13 @@ async function handleContextMenuClick(info, tab) {
     }
   } catch (error) {
     console.error('Error handling menu click:', error);
+    // Ensure tab opens even if grouping fails
+    try {
+      console.warn('Attempting to open link without grouping as fallback');
+      await chrome.tabs.create({ url: linkUrl, windowId: tab.windowId });
+    } catch (fallbackError) {
+      console.error('Fallback tab creation also failed:', fallbackError);
+    }
   }
 }
 
@@ -268,8 +316,9 @@ async function openLinkInExistingGroup(url, groupId, sourceTab) {
 
   try {
     // Verify the group still exists before creating the tab
+    let group;
     try {
-      const group = await chrome.tabGroups.get(groupId);
+      group = await chrome.tabGroups.get(groupId);
       console.debug(`Group ${groupId} exists:`, group.title || 'Untitled');
     } catch (groupCheckError) {
       console.error(`Group ${groupId} no longer exists, opening in new group instead`);
@@ -288,19 +337,46 @@ async function openLinkInExistingGroup(url, groupId, sourceTab) {
     // Add a small delay to ensure tab is fully created
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Try to add the tab to the group
-    try {
-      await chrome.tabs.group({
-        tabIds: [newTab.id],
-        groupId: groupId
-      });
-      console.log(`✅ Tab added to group ${groupId}`);
-    } catch (groupError) {
-      console.error('Error adding tab to group:', groupError);
-      console.warn('Tab opened but not grouped');
+    // Try to add the tab to the group with retry logic
+    let retryCount = 0;
+    const maxRetries = 3;
+    let grouped = false;
+
+    while (retryCount < maxRetries && !grouped) {
+      try {
+        // Verify group still exists before each attempt
+        await chrome.tabGroups.get(groupId);
+
+        // Verify tab still exists
+        const tabCheck = await chrome.tabs.get(newTab.id);
+        if (!tabCheck) {
+          console.error('Tab no longer exists');
+          return;
+        }
+
+        await chrome.tabs.group({
+          tabIds: [newTab.id],
+          groupId: groupId
+        });
+
+        grouped = true;
+        console.log(`✅ Tab added to group ${groupId} (attempt ${retryCount + 1})`);
+      } catch (groupError) {
+        retryCount++;
+        console.warn(`Attempt ${retryCount} to group tab failed:`, groupError.message);
+
+        if (retryCount < maxRetries) {
+          // Wait before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+        } else {
+          console.error('All grouping attempts failed:', groupError);
+          console.warn('Tab opened but not grouped');
+        }
+      }
     }
   } catch (error) {
     console.error('Error opening link in existing group:', error);
+    throw error; // Re-throw to trigger fallback in handleContextMenuClick
   }
 }
 
@@ -316,27 +392,48 @@ async function openLinkInNewGroup(url, sourceTab) {
 
     if (!newTab) {
       console.error('Failed to create tab');
-      return;
+      throw new Error('Failed to create tab');
     }
 
     // Add a small delay to ensure tab is fully created
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Create a new group with this tab
-    try {
-      const groupId = await chrome.tabs.group({
-        tabIds: [newTab.id]
-      });
-      console.log(`✅ New group created`);
+    // Create a new group with this tab with retry logic
+    let retryCount = 0;
+    const maxRetries = 3;
+    let grouped = false;
 
-      // Optionally set a default title (can be customized later)
-      // For now, we'll leave it untitled so users can name it themselves
-    } catch (groupError) {
-      console.error('Error creating new group:', groupError);
-      console.warn('Tab opened but not grouped');
+    while (retryCount < maxRetries && !grouped) {
+      try {
+        // Verify tab still exists
+        const tabCheck = await chrome.tabs.get(newTab.id);
+        if (!tabCheck) {
+          console.error('Tab no longer exists');
+          return;
+        }
+
+        const groupId = await chrome.tabs.group({
+          tabIds: [newTab.id]
+        });
+
+        grouped = true;
+        console.log(`✅ New group created with ID ${groupId} (attempt ${retryCount + 1})`);
+      } catch (groupError) {
+        retryCount++;
+        console.warn(`Attempt ${retryCount} to create group failed:`, groupError.message);
+
+        if (retryCount < maxRetries) {
+          // Wait before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+        } else {
+          console.error('All group creation attempts failed:', groupError);
+          console.warn('Tab opened but not grouped');
+        }
+      }
     }
   } catch (error) {
     console.error('Error opening link in new group:', error);
+    throw error; // Re-throw to trigger fallback in handleContextMenuClick
   }
 }
 
